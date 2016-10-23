@@ -7,11 +7,6 @@
 #include <string.h>
 
 
-
-/*
-Some of this has been lifted from dwarf_prototypes.c in ltrace. */
-
-
 #define confirm(cond, format, ...) do {                                 \
         bool _cond = cond;                                              \
         if(!_cond) {                                                    \
