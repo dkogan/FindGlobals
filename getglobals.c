@@ -24,13 +24,61 @@ Some of this has been lifted from dwarf_prototypes.c in ltrace. */
         bool _cond = cond;                                              \
         if(!_cond) {                                                    \
             fprintf(stderr, "%s(): die '%s' @ 0x%" PRIx64 ": "format"\n", \
-                    __func__, dwarf_diename(&die), dwarf_dieoffset(&die), \
+                    __func__, dwarf_diename(die), dwarf_dieoffset(die), \
                     ##__VA_ARGS__);                                     \
             result = false;                                             \
             goto done;                                                  \
         }                                                               \
     } while(0)
 
+
+
+static bool get_size(Dwarf_Die* die, unsigned int* out)
+{
+    bool result = true;
+
+    Dwarf_Die       type_die;
+    Dwarf_Attribute attr;
+    confirm_with_die(die, dwarf_attr(die, DW_AT_type, &attr),
+                     "Variable doesn't have DW_AT_type");
+    dwarf_formref_die(&attr, &type_die);
+
+    Dwarf_Word size;
+    dwarf_aggregate_size(&type_die, &size);
+    *out = (unsigned int)size;
+
+ done:
+    return result;
+}
+
+static bool get_location(Dwarf_Die* die, void** out)
+{
+    Dwarf_Attribute attr;
+
+    // defaults
+    bool result = true;
+    *out = NULL;
+
+    if( !dwarf_attr(die, DW_AT_location, &attr) )
+        // No location. This is a (for instance) a stack variable in a
+        // function. It doesn't persist, so I don't care about it
+        return true;
+
+    // elfutils/tests/varlocs.c has an example of this. I implement a very
+    // small subset
+    Dwarf_Op* op;
+    size_t oplen;
+    confirm_with_die( die, 0 == dwarf_getlocation(&attr, &op, &oplen),
+                      "Couldn't dwarf_getlocation()");
+
+    // I only accept simple, directly-given addresses
+    if( oplen != 1 )               goto done;
+    if( op[0].atom != DW_OP_addr ) goto done;
+    *out = (void*)op[0].number;
+
+ done:
+    return result;
+}
 
 static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
 {
@@ -48,7 +96,7 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
         // dwarf_siblingof() returns 0 if there's a sibling, <0 on error and >0
         // if no sibling exists. I'm done if !0.
         ({ done = dwarf_siblingof(&die, &die);
-           confirm_with_die( die, done >= 0, "dwarf_siblingof() failed" );
+           confirm_with_die( &die, done >= 0, "dwarf_siblingof() failed" );
         }))
     {
         if( dwarf_tag(&die) == DW_TAG_subprogram )
@@ -71,36 +119,25 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
 
         const char* var_name = dwarf_diename(&die);
 
-        Dwarf_Die       type_die;
-        Dwarf_Attribute attr;
-        confirm_with_die(die, dwarf_attr(&die, DW_AT_type, &attr),
-                         "Variable doesn't have DW_AT_type");
-        dwarf_formref_die(&attr, &type_die);
-
-        Dwarf_Word size;
-        dwarf_aggregate_size(&type_die, &size);
-        if( size <= 0 )
+        unsigned int size;
+        if(! get_size(&die, &size) )
+        {
+            result = false;
+            goto done;
+        }
+        if( size == 0 )
             continue;
 
-        if( !dwarf_attr(&die, DW_AT_location, &attr) )
-            // No location. This is a (for instance) a stack variable in a
-            // function. It doesn't persist, so I don't care about it
-            continue;
-
-        // elfutils/tests/varlocs.c has an example of this. I implement a very
-        // small subset
         void* addr;
-        Dwarf_Op* op;
-        size_t oplen;
-        confirm_with_die( die, 0 == dwarf_getlocation(&attr, &op, &oplen),
-                          "Couldn't dwarf_getlocation()");
+        if(!get_location(&die, &addr))
+        {
+            result = false;
+            goto done;
+        }
+        if( addr == NULL )
+            continue;
 
-        // I only accept simple, directly-given addresses
-        if( oplen != 1 )               continue;
-        if( op[0].atom != DW_OP_addr ) continue;
-        addr = (void*)op[0].number;
-
-        printf( "DWARF says %s at %p, size %zd\n", var_name, addr, size);
+        fprintf(stderr, "DWARF says %s at %p, size %d\n", var_name, addr, size);
     }
 
  done:
