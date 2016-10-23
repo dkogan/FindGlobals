@@ -15,7 +15,6 @@ Some of this has been lifted from dwarf_prototypes.c in ltrace. */
         bool _cond = cond;                                              \
         if(!_cond) {                                                    \
             fprintf(stderr, "%s(): "format"\n", __func__, ##__VA_ARGS__); \
-            result = false;                                             \
             goto done;                                                  \
         }                                                               \
 } while(0)
@@ -26,7 +25,6 @@ Some of this has been lifted from dwarf_prototypes.c in ltrace. */
             fprintf(stderr, "%s(): die '%s' @ 0x%" PRIx64 ": "format"\n", \
                     __func__, dwarf_diename(die), dwarf_dieoffset(die), \
                     ##__VA_ARGS__);                                     \
-            result = false;                                             \
             goto done;                                                  \
         }                                                               \
     } while(0)
@@ -35,7 +33,7 @@ Some of this has been lifted from dwarf_prototypes.c in ltrace. */
 
 static bool get_size(Dwarf_Die* die, unsigned int* out)
 {
-    bool result = true;
+    bool result = false;
 
     Dwarf_Die sub_die;
     Dwarf_Attribute attr;
@@ -61,6 +59,7 @@ static bool get_size(Dwarf_Die* die, unsigned int* out)
     Dwarf_Word size;
     dwarf_aggregate_size(&sub_die, &size);
     *out = (unsigned int)size;
+    result = true;
 
  done:
     return result;
@@ -71,7 +70,7 @@ static bool get_location(Dwarf_Die* die, void** out)
     Dwarf_Attribute attr;
 
     // defaults
-    bool result = true;
+    bool result = false;
     *out = NULL;
 
     if( !dwarf_attr(die, DW_AT_location, &attr) )
@@ -83,13 +82,19 @@ static bool get_location(Dwarf_Die* die, void** out)
     // small subset
     Dwarf_Op* op;
     size_t oplen;
-    confirm_with_die( die, 0 == dwarf_getlocation(&attr, &op, &oplen),
-                      "Couldn't dwarf_getlocation()");
+    if( 0 != dwarf_getlocation(&attr, &op, &oplen) )
+        goto done;
 
-    // I only accept simple, directly-given addresses
-    if( oplen != 1 )               goto done;
-    if( op[0].atom != DW_OP_addr ) goto done;
+    // I only accept simple, directly-given addresses. Anything more complicated
+    // is a successful no-address return
+    if( oplen != 1 ||
+        op[0].atom != DW_OP_addr )
+    {
+        result = true;
+        goto done;
+    }
     *out = (void*)op[0].number;
+    result = true;
 
  done:
     return result;
@@ -103,8 +108,8 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
         return true;
     }
 
-    bool result = true;
-    int done = 0;
+    bool result = false;
+    int  done   = 0;
 
     for(; !done;
 
@@ -125,6 +130,10 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
         if( dwarf_tag(&die) != DW_TAG_variable )
             continue;
 
+        // fprintf(stderr, "looking at die %#010x: %s\n",
+        //         (unsigned)dwarf_dieoffset(&die),
+        //         dwarf_diename(&die));
+
         const char* decl_file = dwarf_decl_file(&die);
         if( !decl_file )
             continue;
@@ -136,24 +145,20 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
 
         unsigned int size;
         if(! get_size(&die, &size) )
-        {
-            result = false;
             goto done;
-        }
         if( size == 0 )
             continue;
 
         void* addr;
         if(!get_location(&die, &addr))
-        {
-            result = false;
             goto done;
-        }
         if( addr == NULL )
             continue;
 
         fprintf(stderr, "DWARF says %s at %p, size %d\n", var_name, addr, size);
     }
+
+    result = true;
 
  done:
     return result;
@@ -165,7 +170,7 @@ bool get_addrs(const char* executable_filename, const char* source_pattern)
     Dwfl*        dwfl        = NULL;
     Dwfl_Module* dwfl_module = NULL;
 
-    bool result = true;
+    bool result = false;
 
     const Dwfl_Callbacks proc_callbacks =
         {
@@ -192,15 +197,14 @@ bool get_addrs(const char* executable_filename, const char* source_pattern)
         if (dwarf_tag(die) == DW_TAG_compile_unit)
         {
             if(!process_die_children(die, source_pattern))
-            {
-                result = false;
-                break;
-            }
+                goto done;
         }
         else
             // Really expecting a DW_TAG_compile_unit. I guess I skip this.
             // Maybe this is an error
         {}
+
+    result = true;
 
  done:
     if(dwfl != NULL)
