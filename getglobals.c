@@ -27,6 +27,16 @@
 
 
 
+#define MAX_WRITEABLE_RANGES 10
+struct memrange_t
+{
+    void* start;
+    void* end;
+} writeable_memory[MAX_WRITEABLE_RANGES];
+int Nwriteable_memory = 0;
+
+
+
 static bool get_size(Dwarf_Die* die, unsigned int* out)
 {
     bool result = false;
@@ -96,6 +106,19 @@ static bool get_location(Dwarf_Die* die, void** out)
     return result;
 }
 
+static bool is_addr_writeable( const void* addr,
+
+                               int Nwriteable_memory,
+                               const struct memrange_t* writeable_memory )
+{
+    for(int i=0; i<Nwriteable_memory; i++)
+        if( addr >= writeable_memory->start &&
+            addr <  writeable_memory->end )
+            return true;
+
+    return false;
+}
+
 static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
 {
     Dwarf_Die die;
@@ -154,6 +177,9 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
         if( addr == NULL )
             continue;
 
+        if( !is_addr_writeable(addr, Nwriteable_memory, writeable_memory) )
+            continue;
+
         fprintf(stderr, "DWARF says %s at %p, size %d\n", var_name, addr, size);
     }
 
@@ -163,7 +189,10 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
     return result;
 }
 
-static bool get_writeable_memory_range(Dwfl_Module* dwfl_module)
+static bool get_writeable_memory_ranges(Dwfl_Module* dwfl_module,
+                                        int* Nwriteable_memory,
+                                        struct memrange_t* writeable_memory,
+                                        int Nwriteable_memory_max)
 {
     bool result = false;
 
@@ -179,14 +208,21 @@ static bool get_writeable_memory_range(Dwfl_Module* dwfl_module)
     Elf64_Phdr* phdr = elf64_getphdr(elf);
     confirm( phdr, "Error getting program headers from ELF");
 
+    *Nwriteable_memory = 0;
     for( size_t i=0; i<num_phdr; i++ )
     {
         // I'm only looking for writeable segments
         if( ! (phdr[i].p_flags & PF_W) )
             continue;
 
-        fprintf(stderr, "Writeable segment [%#010lx,%#010lx)\n",
-                phdr[i].p_vaddr, phdr[i].p_vaddr + phdr[i].p_memsz);
+        if( phdr[i].p_memsz <= 0 )
+            continue;
+        confirm( *Nwriteable_memory < Nwriteable_memory_max,
+                 "Too many writeable memory segments to fit into my buffer");
+
+        writeable_memory[(*Nwriteable_memory)++] =
+            (struct memrange_t){ .start = (void*)phdr[i].p_vaddr,
+                                 .end   = (void*)(phdr[i].p_vaddr + phdr[i].p_memsz) };
     }
     result = true;
 
@@ -220,7 +256,9 @@ bool get_addrs(const char* executable_filename, const char* source_pattern)
                                   0, false)),
                  "Error calling dwfl_report_begin()");
 
-        if(!get_writeable_memory_range(dwfl_module))
+        if(!get_writeable_memory_ranges(dwfl_module,
+                                        &Nwriteable_memory, writeable_memory,
+                                        sizeof(writeable_memory)/sizeof(writeable_memory[0])))
             goto done;
     }
     dwfl_report_end(dwfl, NULL, NULL);
