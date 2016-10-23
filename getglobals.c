@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <elfutils/libdwfl.h>
 #include <dwarf.h>
+#include <libelf.h>
 #include <inttypes.h>
 #include <string.h>
 
@@ -167,6 +168,36 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
     return result;
 }
 
+static bool get_writeable_memory_range(Dwfl_Module* dwfl_module)
+{
+    bool result = false;
+
+    GElf_Addr elf_bias;
+    Elf* elf = dwfl_module_getelf (dwfl_module, &elf_bias);
+    confirm( NULL != elf,
+             "Error getting the Elf object from dwfl");
+
+    size_t num_phdr;
+    confirm( 0 == elf_getphdrnum(elf, &num_phdr),
+            "Error getting the program header count from ELF");
+
+    Elf64_Phdr* phdr = elf64_getphdr(elf);
+    confirm( phdr, "Error getting program headers from ELF");
+
+    for( size_t i=0; i<num_phdr; i++ )
+    {
+        // I'm only looking for writeable segments
+        if( ! (phdr[i].p_flags & PF_W) )
+            continue;
+
+        fprintf(stderr, "Writeable segment [%#010lx,%#010lx)\n",
+                phdr[i].p_vaddr, phdr[i].p_vaddr + phdr[i].p_memsz);
+    }
+    result = true;
+
+ done:
+    return result;
+}
 
 bool get_addrs(const char* executable_filename, const char* source_pattern)
 {
@@ -185,13 +216,18 @@ bool get_addrs(const char* executable_filename, const char* source_pattern)
             "Error calling dwfl_begin()");
 
     dwfl_report_begin(dwfl);
-    confirm( NULL !=
-             (dwfl_module =
-              dwfl_report_elf(dwfl,
-                              executable_filename,
-                              executable_filename, -1,
-                              0, false)),
-             "Error calling dwfl_report_begin()");
+    {
+        confirm( NULL !=
+                 (dwfl_module =
+                  dwfl_report_elf(dwfl,
+                                  executable_filename,
+                                  executable_filename, -1,
+                                  0, false)),
+                 "Error calling dwfl_report_begin()");
+
+        if(!get_writeable_memory_range(dwfl_module))
+            goto done;
+    }
     dwfl_report_end(dwfl, NULL, NULL);
 
     Dwarf_Addr bias;

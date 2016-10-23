@@ -1,7 +1,7 @@
 SOURCES := $(wildcard *.c *.cpp *.cc)
 OBJECTS := $(addsuffix .o,$(basename $(SOURCES)))
 
-LDLIBS += -ldw
+LDLIBS += -ldw -lelf
 
 # if any -O... is requested, use that; otherwise, do -O3
 FLAGS_OPTIMIZATION := $(if $(filter -O%,$(CFLAGS) $(CXXFLAGS) $(CPPFLAGS)),,-O3 -ffast-math)
