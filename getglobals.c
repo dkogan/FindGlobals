@@ -138,7 +138,7 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
         if( !decl_file )
             continue;
 
-        if( source_pattern && !strstr( decl_file, source_pattern) )
+        if( source_pattern && source_pattern[0] == '/' && !strstr( decl_file, source_pattern) )
             continue;
 
         const char* var_name = dwarf_diename(&die);
