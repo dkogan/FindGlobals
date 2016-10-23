@@ -119,6 +119,13 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
            confirm_with_die( &die, done >= 0, "dwarf_siblingof() failed" );
         }))
     {
+
+#if 0 // for debugging
+        fprintf(stderr, "looking at die %#010x: %s\n",
+                (unsigned)dwarf_dieoffset(&die),
+                dwarf_diename(&die));
+#endif
+
         if( dwarf_tag(&die) == DW_TAG_subprogram )
         {
             // looking at a function. recurse down to find static variables
@@ -129,10 +136,6 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
 
         if( dwarf_tag(&die) != DW_TAG_variable )
             continue;
-
-        // fprintf(stderr, "looking at die %#010x: %s\n",
-        //         (unsigned)dwarf_dieoffset(&die),
-        //         dwarf_diename(&die));
 
         const char* decl_file = dwarf_decl_file(&die);
         if( !decl_file )
