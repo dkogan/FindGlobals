@@ -58,7 +58,8 @@ static bool get_size(Dwarf_Die* die, unsigned int* out)
     dwarf_formref_die(&attr, &sub_die);
 
     Dwarf_Word size;
-    dwarf_aggregate_size(&sub_die, &size);
+    confirm_with_die(&sub_die, 0 == dwarf_aggregate_size(&sub_die, &size),
+                     "Couldn't get size");
     *out = (unsigned int)size;
     result = true;
 
