@@ -44,20 +44,15 @@ static bool get_size(Dwarf_Die* die, unsigned int* out)
     Dwarf_Die sub_die;
     Dwarf_Attribute attr;
 
-    // if we have a DW_AT_specification then I get the size information from
-    // THAT node
-    if( dwarf_attr(die, DW_AT_specification, &attr) )
-    {
-        dwarf_formref_die(&attr, &sub_die);
-        return get_size(&sub_die, out);
-    }
-    if( dwarf_attr(die, DW_AT_abstract_origin, &attr) )
+    // if we have an indirect type reference then I get the size information
+    // from THAT node
+    if( dwarf_attr(die, DW_AT_specification,   &attr) ||
+        dwarf_attr(die, DW_AT_abstract_origin, &attr) )
     {
         dwarf_formref_die(&attr, &sub_die);
         return get_size(&sub_die, out);
     }
 
-    // No DW_AT_specification. Get the type data from this node
     confirm_with_die(die, dwarf_attr(die, DW_AT_type, &attr),
                      "Variable doesn't have DW_AT_type");
     dwarf_formref_die(&attr, &sub_die);
