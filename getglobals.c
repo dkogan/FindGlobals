@@ -260,8 +260,7 @@ static bool get_writeable_memory_ranges(Dwfl_Module* dwfl_module,
     return result;
 }
 
-bool get_addrs(const char* name, const char* filename,
-               void (*func)(void),
+bool get_addrs(void (*func)(void),
                const char* source_pattern)
 {
     Dwfl*        dwfl        = NULL;
