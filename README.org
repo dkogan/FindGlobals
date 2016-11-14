@@ -155,6 +155,49 @@ all lines appear 2 times. We see this with 2 trivial exceptions:
 - The lines containing ======= are delimiters
 - =x0= has size 0, so the instrumentation doesn't even bother to report it
 
+* Notes
+- The example in this tree works with both static linking (=getglobals=) and
+  dynamic linking (=getglobals_viaso=).
+
+- This is alpha quality proof-of-concept software. It's an excellent starting
+  point if you need this functionality, but do thoroughly test it for your use
+  case.
+
+- This was written with C code in mind. I can imagine that C++ can produce
+  persistent state in more ways. Again, test it thoroughly
+
+- The libraries I'm using to parse the DWARF are woefully underdocumented, and
+  I'm probably not doing everything 100% correctly. At the risk of repeating
+  myself: test it thoroughly.
+
+- For ELF objects linked into the executable normally (whether statically or
+  dynamically) this works. If we're doing something funny like loading
+  libraries ourselves with =libdl=, then it /probably/ works too, but I'd test
+  it before assuming.
+
+This effort uncovered a bug in gcc:
+
+https://gcc.gnu.org/bugzilla/show_bug.cgi?id=78100
+
+It turns out that gcc erroneously omits the sizing information if you have an
+array object pre-declared as an =extern= of unknown size (as was done in my
+specific library). So if you have this source:
+
+#+BEGIN_SRC C
+#include <stdio.h>
+
+extern int s[];
+int s[] = { 1,2,3 };
+
+int main(void)
+{
+    printf("%zd\n", sizeof(s));
+    return 0;
+}
+#+END_SRC
+
+then the object produced by gcc <= 6.2 doesn't know that =s= has /3/ integers.
+
 * Copyright and License
 Copyright 2016 Dima Kogan.
 
