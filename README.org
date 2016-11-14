@@ -67,7 +67,7 @@ void print_tst2(void)
 }
 #+END_SRC
 
-=mainc=:
+=main.c=:
 #+BEGIN_SRC C
 // ...
 #include "getglobals.h"
