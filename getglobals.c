@@ -175,6 +175,8 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern, 
         if( !decl_file )
             continue;
 
+        DEBUGLOG("looking at var '%s' in file '%s' matching pattern '%s'",
+                 dwarf_diename(&die), decl_file, source_pattern ? source_pattern : "(nil)");
         if( source_pattern && source_pattern[0] == '/' && !strstr( decl_file, source_pattern) )
             continue;
 
@@ -199,12 +201,9 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern, 
 
 
         if( !is_addr_writeable(addr, Nwriteable_memory, writeable_memory) )
-        {
-            DEBUGLOG("read-only: %s at %p, size %d", var_name, addr, size);
-            continue;
-        }
-
-        printf("DWARF says %s at %p, size %d\n", var_name, addr + bias, size);
+            printf("readonly %s at %p, size %d\n", var_name, addr + bias, size);
+        else
+            printf("%s at %p, size %d\n", var_name, addr + bias, size);
     }
 
     result = true;
