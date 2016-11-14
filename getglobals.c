@@ -181,7 +181,7 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern, 
 
         DEBUGLOG("looking at var '%s' in file '%s' matching pattern '%s'",
                  dwarf_diename(&die), decl_file, source_pattern ? source_pattern : "(nil)");
-        if( source_pattern && source_pattern[0] == '/' && !strstr( decl_file, source_pattern) )
+        if( source_pattern && !strstr( decl_file, source_pattern) )
             continue;
 
         const char* var_name = dwarf_diename(&die);
