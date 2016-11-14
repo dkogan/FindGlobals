@@ -70,11 +70,15 @@ static bool get_size(Dwarf_Die* die, unsigned int* out)
 
     Dwarf_Word size;
 
-
-
-    dwarf_aggregate_size(&sub_die, &size);
+    // I sometimes see errors when querying the variable size of length-0
+    // objects. The ones I've seen are triggered by building with -ffast-math
+    // and looking at size-0 objects like x0 in the demo application source
+    // tst2.c. In that case I simply return size=0
+    if( dwarf_aggregate_size(&sub_die, &size) )
+        size = 0;
     // confirm_with_die(&sub_die, 0 == dwarf_aggregate_size(&sub_die, &size),
     //                  "Couldn't get size");
+
     *out = (unsigned int)size;
     result = true;
 
