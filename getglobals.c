@@ -280,28 +280,8 @@ bool get_addrs(void (*func)(void),
                      dwfl_begin(&proc_callbacks)),
             "Error calling dwfl_begin()");
 
-    DEBUGLOG("dwfl_linux_proc_report says: %d", dwfl_linux_proc_report (dwfl, getpid()) );
-    DEBUGLOG("dwfl thinks PID is %d", (int)dwfl_pid(dwfl));
-
-    // dwfl_report_begin(dwfl);
-    // {
-    //     confirm( NULL !=
-    //              (dwfl_module =
-    //               dwfl_report_elf(dwfl,
-    //                               name,
-    //                               filename, -1,
-    //                               0, false)),
-    //              "Error calling dwfl_report_begin()");
-
-    //     if(!get_writeable_memory_ranges(dwfl_module,
-    //                                     &Nwriteable_memory, writeable_memory,
-    //                                     sizeof(writeable_memory)/sizeof(writeable_memory[0])))
-    //         goto done;
-    // }
-    // DEBUGLOG("dwfl thinks PID is %d", (int)dwfl_pid(dwfl));
-    // dwfl_report_end(dwfl, NULL, NULL);
-    // DEBUGLOG("dwfl thinks PID is %d", (int)dwfl_pid(dwfl));
-
+    int report_result = dwfl_linux_proc_report (dwfl, getpid());
+    DEBUGLOG("dwfl_linux_proc_report says: %d", report_result );
 
     dwfl_module = dwfl_addrmodule(dwfl, (Dwarf_Addr)func);
     if(!get_writeable_memory_ranges(dwfl_module,
