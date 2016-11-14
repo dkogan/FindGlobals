@@ -158,10 +158,10 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern, 
         }))
     {
 
-#if 0 // for debugging
-        printf("looking at die %#010x: %s\n",
-               (unsigned)dwarf_dieoffset(&die),
-               dwarf_diename(&die));
+#if 0 // for verbose debugging
+        DEBUGLOG("looking at die %#010x: %s",
+                 (unsigned)dwarf_dieoffset(&die),
+                 dwarf_diename(&die));
 #endif
 
         if( dwarf_tag(&die) == DW_TAG_subprogram )
