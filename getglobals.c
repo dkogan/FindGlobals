@@ -5,6 +5,7 @@
 #include <libelf.h>
 #include <inttypes.h>
 #include <string.h>
+#include <unistd.h>
 
 
 #define confirm(cond, format, ...) do {                                 \
@@ -31,19 +32,19 @@
 #define DEBUG
 
 #ifdef DEBUG
-  #define DEBUGLOG(fmt, ...) printf(fmt "\n", __VA_ARGS__)
+ #define DEBUGLOG(fmt, ...) fprintf(stderr, fmt "\n", __VA_ARGS__)
 #else
   #define DEBUGLOG(fmt, ...)
 #endif
 
 
 #define MAX_WRITEABLE_RANGES 10
-struct memrange_t
+static struct memrange_t
 {
     void* start;
     void* end;
 } writeable_memory[MAX_WRITEABLE_RANGES];
-int Nwriteable_memory = 0;
+static int Nwriteable_memory = 0;
 
 
 
@@ -68,8 +69,12 @@ static bool get_size(Dwarf_Die* die, unsigned int* out)
     dwarf_formref_die(&attr, &sub_die);
 
     Dwarf_Word size;
-    confirm_with_die(&sub_die, 0 == dwarf_aggregate_size(&sub_die, &size),
-                     "Couldn't get size");
+
+
+
+    dwarf_aggregate_size(&sub_die, &size);
+    // confirm_with_die(&sub_die, 0 == dwarf_aggregate_size(&sub_die, &size),
+    //                  "Couldn't get size");
     *out = (unsigned int)size;
     result = true;
 
@@ -125,7 +130,11 @@ static bool is_addr_writeable( const void* addr,
     return false;
 }
 
-static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
+
+
+
+
+static bool process_die_children(Dwarf_Die *parent, const char* source_pattern, Dwarf_Addr bias)
 {
     Dwarf_Die die;
     if (dwarf_child(parent, &die) != 0) {
@@ -154,7 +163,7 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
         if( dwarf_tag(&die) == DW_TAG_subprogram )
         {
             // looking at a function. recurse down to find static variables
-            if(!process_die_children(&die, NULL))
+            if(!process_die_children(&die, NULL, bias))
                 return false;
             continue;
         }
@@ -171,17 +180,23 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
 
         const char* var_name = dwarf_diename(&die);
 
+        void* addr;
+        if(!get_location(&die, &addr))
+        {
+            // I couldn't get the location for some reason. Normally I'd simply
+            // give up (goto done), but I keep going to get the subsequent
+            // entries
+            continue;
+        }
+        if( addr == NULL )
+            continue;
+
         unsigned int size;
         if(! get_size(&die, &size) )
             goto done;
         if( size == 0 )
             continue;
 
-        void* addr;
-        if(!get_location(&die, &addr))
-            goto done;
-        if( addr == NULL )
-            continue;
 
         if( !is_addr_writeable(addr, Nwriteable_memory, writeable_memory) )
         {
@@ -189,7 +204,7 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
             continue;
         }
 
-        DEBUGLOG("DWARF says %s at %p, size %d", var_name, addr, size);
+        printf("DWARF says %s at %p, size %d\n", var_name, addr + bias, size);
     }
 
     result = true;
@@ -245,7 +260,9 @@ static bool get_writeable_memory_ranges(Dwfl_Module* dwfl_module,
     return result;
 }
 
-bool get_addrs(const char* executable_filename, const char* source_pattern)
+bool get_addrs(const char* name, const char* filename,
+               void (*func)(void),
+               const char* source_pattern)
 {
     Dwfl*        dwfl        = NULL;
     Dwfl_Module* dwfl_module = NULL;
@@ -261,22 +278,37 @@ bool get_addrs(const char* executable_filename, const char* source_pattern)
                      dwfl_begin(&proc_callbacks)),
             "Error calling dwfl_begin()");
 
-    dwfl_report_begin(dwfl);
-    {
-        confirm( NULL !=
-                 (dwfl_module =
-                  dwfl_report_elf(dwfl,
-                                  executable_filename,
-                                  executable_filename, -1,
-                                  0, false)),
-                 "Error calling dwfl_report_begin()");
+    DEBUGLOG("dwfl_linux_proc_report says: %d", dwfl_linux_proc_report (dwfl, getpid()) );
+    DEBUGLOG("dwfl thinks PID is %d", (int)dwfl_pid(dwfl));
 
-        if(!get_writeable_memory_ranges(dwfl_module,
-                                        &Nwriteable_memory, writeable_memory,
-                                        sizeof(writeable_memory)/sizeof(writeable_memory[0])))
-            goto done;
-    }
-    dwfl_report_end(dwfl, NULL, NULL);
+    // dwfl_report_begin(dwfl);
+    // {
+    //     confirm( NULL !=
+    //              (dwfl_module =
+    //               dwfl_report_elf(dwfl,
+    //                               name,
+    //                               filename, -1,
+    //                               0, false)),
+    //              "Error calling dwfl_report_begin()");
+
+    //     if(!get_writeable_memory_ranges(dwfl_module,
+    //                                     &Nwriteable_memory, writeable_memory,
+    //                                     sizeof(writeable_memory)/sizeof(writeable_memory[0])))
+    //         goto done;
+    // }
+    // DEBUGLOG("dwfl thinks PID is %d", (int)dwfl_pid(dwfl));
+    // dwfl_report_end(dwfl, NULL, NULL);
+    // DEBUGLOG("dwfl thinks PID is %d", (int)dwfl_pid(dwfl));
+
+
+    dwfl_module = dwfl_addrmodule(dwfl, (Dwarf_Addr)func);
+    if(!get_writeable_memory_ranges(dwfl_module,
+                                    &Nwriteable_memory, writeable_memory,
+                                    sizeof(writeable_memory)/sizeof(writeable_memory[0])))
+        goto done;
+
+
+
 
     Dwarf_Addr bias;
     Dwarf_Die* die = NULL;
@@ -284,7 +316,7 @@ bool get_addrs(const char* executable_filename, const char* source_pattern)
         if (dwarf_tag(die) == DW_TAG_compile_unit)
         {
             DEBUGLOG("CU bias: %#lx", bias);
-            if(!process_die_children(die, source_pattern))
+            if(!process_die_children(die, source_pattern, bias))
                 goto done;
         }
         else

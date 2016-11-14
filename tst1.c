@@ -36,7 +36,11 @@ int main(int argc, char* argv[])
     printsize(vcchar);
     printsize(cvchar);
 
-    get_addrs(argv[0], "getglobals");
+    printf("\n===================\n\n");
+
+    get_addrs(argv[0], argv[0],
+              (void (*)())&main,
+              "getglobals");
 
     return 0;
 }
