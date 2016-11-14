@@ -27,6 +27,16 @@
 
 
 
+
+#define DEBUG
+
+#ifdef DEBUG
+  #define DEBUGLOG(fmt, ...) printf(fmt "\n", __VA_ARGS__)
+#else
+  #define DEBUGLOG(fmt, ...)
+#endif
+
+
 #define MAX_WRITEABLE_RANGES 10
 struct memrange_t
 {
@@ -136,9 +146,9 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
     {
 
 #if 0 // for debugging
-        fprintf(stderr, "looking at die %#010x: %s\n",
-                (unsigned)dwarf_dieoffset(&die),
-                dwarf_diename(&die));
+        printf("looking at die %#010x: %s\n",
+               (unsigned)dwarf_dieoffset(&die),
+               dwarf_diename(&die));
 #endif
 
         if( dwarf_tag(&die) == DW_TAG_subprogram )
@@ -174,9 +184,12 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern)
             continue;
 
         if( !is_addr_writeable(addr, Nwriteable_memory, writeable_memory) )
+        {
+            DEBUGLOG("read-only: %s at %p, size %d", var_name, addr, size);
             continue;
+        }
 
-        fprintf(stderr, "DWARF says %s at %p, size %d\n", var_name, addr, size);
+        DEBUGLOG("DWARF says %s at %p, size %d", var_name, addr, size);
     }
 
     result = true;
@@ -194,6 +207,7 @@ static bool get_writeable_memory_ranges(Dwfl_Module* dwfl_module,
 
     GElf_Addr elf_bias;
     Elf* elf = dwfl_module_getelf (dwfl_module, &elf_bias);
+    DEBUGLOG("elf bias: %#lx", elf_bias);
     confirm( NULL != elf,
              "Error getting the Elf object from dwfl");
 
@@ -219,6 +233,11 @@ static bool get_writeable_memory_ranges(Dwfl_Module* dwfl_module,
         writeable_memory[(*Nwriteable_memory)++] =
             (struct memrange_t){ .start = (void*)phdr[i].p_vaddr,
                                  .end   = (void*)(phdr[i].p_vaddr + phdr[i].p_memsz) };
+
+        DEBUGLOG("See writeable memory at %#lx of size %#lx",
+                 phdr[i].p_vaddr,
+                 phdr[i].p_memsz);
+
     }
     result = true;
 
@@ -264,6 +283,7 @@ bool get_addrs(const char* executable_filename, const char* source_pattern)
     while( NULL != (die = dwfl_module_nextcu(dwfl_module, die, &bias)) )
         if (dwarf_tag(die) == DW_TAG_compile_unit)
         {
+            DEBUGLOG("CU bias: %#lx", bias);
             if(!process_die_children(die, source_pattern))
                 goto done;
         }
