@@ -1,0 +1,167 @@
+* Overview
+This is a proof-of-concept program that is able to find all global state in a
+program by parsing its debug information (which is assumed to be available).
+
+The global state I'm looking for is all persistent data:
+
+- globals variables (static or otherwise)
+- static local variables in functions
+
+I'm only interested in data that can change, so I look /only/ at the writeable
+segment. This program is alpha-quality, but passes some basic tests.
+
+* Example
+=tst1.c=:
+#+BEGIN_SRC C
+// ....
+struct S1 v1[10];
+
+volatile const char volatile_const_char;
+const volatile char const_volatile_char;
+const char          const_char = 1;
+
+void print_tst1(void)
+{
+    showvar(v1);
+    showvar(volatile_const_char);
+    showvar(const_volatile_char);
+    showvar_readonly(const_char);
+}
+#+END_SRC
+
+=tst2.c=:
+#+BEGIN_SRC C
+// ....
+int v2 = 5;
+
+const char*       const_char_pointer       = NULL;
+const char const* const_char_const_pointer = NULL;
+char const*       char_const_pointer       = NULL;
+
+const        char  const_string_array[]        = "456";
+static const char  static_const_string_array[] = "abc";
+
+struct S0 s0;
+int       x0[0];
+int       x1[30];
+
+
+
+void print_tst2(void)
+{
+    static int    static_int_5[5];
+    static double static_double;
+    double dynamic_d;
+
+    showvar(static_int_5);
+    showvar(static_double);
+    showvar(v2);
+    showvar(const_char_pointer);
+    showvar_readonly(const_char_const_pointer);
+    showvar_readonly(char_const_pointer);
+    showvar_readonly(const_string_array);
+    showvar_readonly(static_const_string_array);
+    showvar(s0);
+    showvar(x0);
+    showvar(x1);
+}
+#+END_SRC
+
+=mainc=:
+#+BEGIN_SRC C
+// ...
+#include "getglobals.h"
+
+int main(int argc, char* argv[])
+{
+    printf("=================== Program sees: ===================\n");
+
+    print_tst1();
+    print_tst2();
+
+    printf("=================== DWARF sees: ===================\n");
+
+    get_addrs((void (*)())&print_tst1, "tst");
+
+    return 0;
+}
+#+END_SRC
+
+Results:
+
+#+BEGIN_EXAMPLE
+$ ./getglobals 2>/dev/null
+
+=================== Program sees: ===================
+v1 at 0x55756bc8e240, size 80
+volatile_const_char at 0x55756bc8e220, size 1
+const_volatile_char at 0x55756bc8e290, size 1
+readonly const_char at 0x55756ba8cc65, size 1
+static_int_5 at 0x55756bc8e040, size 20
+static_double at 0x55756bc8e038, size 8
+v2 at 0x55756bc8e010, size 4
+const_char_pointer at 0x55756bc8e030, size 8
+readonly const_char_pointer_const at 0x55756ba8cbd0, size 8
+readonly char_pointer_const at 0x55756ba8cbc8, size 8
+readonly const_string_array at 0x55756ba8cbc4, size 4
+readonly static_const_string_array at 0x55756ba8cbc0, size 4
+s0 at 0x55756bc8e120, size 100
+x0 at 0x55756bc8e184, size 0
+x1 at 0x55756bc8e1a0, size 120
+=================== DWARF sees: ===================
+v2 at 0x55756bc8e010, size 4
+const_char_pointer at 0x55756bc8e030, size 8
+readonly const_char_pointer_const at 0x55756ba8cbd0, size 8
+readonly char_pointer_const at 0x55756ba8cbc8, size 8
+readonly const_string_array at 0x55756ba8cbc4, size 4
+readonly static_const_string_array at 0x55756ba8cbc0, size 4
+s0 at 0x55756bc8e120, size 100
+x1 at 0x55756bc8e1a0, size 120
+static_int_5 at 0x55756bc8e040, size 20
+static_double at 0x55756bc8e038, size 8
+v1 at 0x55756bc8e240, size 80
+volatile_const_char at 0x55756bc8e220, size 1
+const_volatile_char at 0x55756bc8e290, size 1
+readonly const_char at 0x55756ba8cc65, size 1
+
+
+dima@shorty:$ ./getglobals 2>/dev/null | sort | uniq -c | sort
+
+      1 =================== DWARF sees: ===================
+      1 =================== Program sees: ===================
+      1 x0 at 0x55be5ba3d184, size 0
+      2 const_char_pointer at 0x55be5ba3d030, size 8
+      2 const_volatile_char at 0x55be5ba3d290, size 1
+      2 readonly char_pointer_const at 0x55be5b83bbc8, size 8
+      2 readonly const_char at 0x55be5b83bc65, size 1
+      2 readonly const_char_pointer_const at 0x55be5b83bbd0, size 8
+      2 readonly const_string_array at 0x55be5b83bbc4, size 4
+      2 readonly static_const_string_array at 0x55be5b83bbc0, size 4
+      2 s0 at 0x55be5ba3d120, size 100
+      2 static_double at 0x55be5ba3d038, size 8
+      2 static_int_5 at 0x55be5ba3d040, size 20
+      2 v1 at 0x55be5ba3d240, size 80
+      2 v2 at 0x55be5ba3d010, size 4
+      2 volatile_const_char at 0x55be5ba3d220, size 1
+      2 x1 at 0x55be5ba3d1a0, size 120
+#+END_EXAMPLE
+
+In the example above we see the test program report the locations and addreses
+of its data. Then the instrumentation reports the addresses and data that it
+sees. These should be identical (in theory). We then sort and count duplicate
+lines in the output. If the two sets of reports were identical, we should see
+all lines appear 2 times. We see this with 2 trivial exceptions:
+
+- The lines containing ======= are delimiters
+- =x0= has size 0, so the instrumentation doesn't even bother to report it
+
+* Copyright and License
+Copyright 2016 Dima Kogan.
+
+Released under an MIT-style license:
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so.
