@@ -1,28 +1,32 @@
-SOURCES := $(wildcard *.c *.cpp *.cc)
-OBJECTS := $(addsuffix .o,$(basename $(SOURCES)))
+OBJECTS_TST       := $(addsuffix .o,$(basename $(wildcard tst*.c)))
+OBJECT_MAIN       := main.o
+OBJECT_GETGLOBALS := getglobals.o
 
 LDLIBS += -ldw -lelf
 
 # if any -O... is requested, use that; otherwise, do -O3
 FLAGS_OPTIMIZATION := $(if $(filter -O%,$(CFLAGS) $(CXXFLAGS) $(CPPFLAGS)),,-O3 -ffast-math)
-CPPFLAGS := -MMD -g $(FLAGS_OPTIMIZATION) -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-parameter
+CPPFLAGS := -MMD -g $(FLAGS_OPTIMIZATION) -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-parameter -Wno-unused-variable
 CFLAGS += -std=gnu11
 CXXFLAGS += -std=gnu++11
 
 
-CPPFLAGS += -fPIC
+$(OBJECT_GETGLOBALS) $(OBJECTS_TST): CPPFLAGS += -fPIC
 
 
 all: getglobals getglobals_viaso
 
-getglobals.so: getglobals.o
+getglobals.so: $(OBJECT_GETGLOBALS)
 	gcc -shared -o $@ $^ -ldw -lelf
 
-getglobals: $(OBJECTS)
+tst.so: $(OBJECTS_TST)
+	gcc -shared -o $@ $^
+
+getglobals: $(OBJECTS_TST) $(OBJECT_GETGLOBALS) $(OBJECT_MAIN)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-getglobals_viaso: $(OBJECTS) getglobals.so
-	$(CC) -Wl,-rpath=$(shell pwd) $(LDFLAGS) -o $@ $(OBJECTS:getglobals.o=getglobals.so) $(LDLIBS)
+getglobals_viaso: $(OBJECT_MAIN) getglobals.so tst.so
+	$(CC) -Wl,-rpath=$(abspath .) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 
 clean:

@@ -1,46 +1,18 @@
-#include <stdio.h>
-#include <stdlib.h>
-
+#include "util.h"
 #include "tst1.h"
-#include "getglobals.h"
+#include "tst2.h"
 
-struct S v1[10];
+struct S1 v1[10];
 
-volatile const char vcchar;
-const volatile char cvchar;
-
-
-
-
-extern int         v2;
-extern int         v21;
-extern const char* c22;
-
-extern struct S0   s0;
-extern int         x0[0];
-extern const char globalconst;
+volatile const char volatile_const_char;
+const volatile char const_volatile_char;
+const char          const_char = 1;
 
 
-
-#define printsize(n) printf(#n" at %p, size %zd\n", &n, sizeof(n))
-
-int main(int argc, char* argv[])
+void print_tst1(void)
 {
-    printsize(v1);
-    printsize(v2);
-    printsize(v21);
-    printsize(c22);
-    printsize(s0);
-    printsize(x0);
-    printsize(globalconst);
-    printsize(vcchar);
-    printsize(cvchar);
-
-    printf("\n===================\n\n");
-
-    get_addrs(argv[0], argv[0],
-              (void (*)())&main,
-              "getglobals");
-
-    return 0;
+    showvar(v1);
+    showvar(volatile_const_char);
+    showvar(const_volatile_char);
+    showvar_readonly(const_char);
 }

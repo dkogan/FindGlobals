@@ -1,4 +1,7 @@
 #pragma once
 
-struct S { double f; };
-struct S0 {};
+struct S0 { char   s[100]; };
+struct S1 { double f; };
+
+
+void print_tst1(void);
