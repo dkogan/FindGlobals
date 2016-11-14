@@ -9,11 +9,24 @@ CPPFLAGS := -MMD -g $(FLAGS_OPTIMIZATION) -Wall -Wextra -Wno-missing-field-initi
 CFLAGS += -std=gnu11
 CXXFLAGS += -std=gnu++11
 
+
+CPPFLAGS += -fPIC
+
+
+all: getglobals getglobals_viaso
+
+getglobals.so: getglobals.o
+	gcc -shared -o $@ $^ -ldw -lelf
+
 getglobals: $(OBJECTS)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
+getglobals_viaso: $(OBJECTS) getglobals.so
+	$(CC) -Wl,-rpath=$(shell pwd) $(LDFLAGS) -o $@ $(OBJECTS:getglobals.o=getglobals.so) $(LDLIBS)
+
+
 clean:
-	rm -rf getglobals *.o *.d
+	rm -rf getglobals *.o *.d *.so
 .PHONY: clean
 
 -include *.d
