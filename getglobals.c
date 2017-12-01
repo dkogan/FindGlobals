@@ -230,6 +230,13 @@ static bool get_writeable_memory_ranges(Dwfl_Module* dwfl_module,
     confirm( NULL != elf,
              "Error getting the Elf object from dwfl");
 
+    // I can do this with either program headers of section headers. Not obvious
+    // which is better. Let's do sections by default
+
+#if 0
+
+    // program headers
+
     size_t num_phdr;
     confirm( 0 == elf_getphdrnum(elf, &num_phdr),
             "Error getting the program header count from ELF");
@@ -261,6 +268,55 @@ static bool get_writeable_memory_ranges(Dwfl_Module* dwfl_module,
                  phdr[i].p_memsz,
                  phdr[i].p_filesz);
     }
+
+#else
+
+    // section headers
+
+    size_t num_shdr;
+    confirm( 0 == elf_getshdrnum(elf, &num_shdr),
+             "Error getting the section header count from ELF");
+
+    Elf64_Ehdr* ehdr = elf64_getehdr(elf);
+
+    *Nwriteable_memory = 0;
+    for( size_t i=0; i<num_shdr; i++ )
+    {
+        Elf_Scn*    scn  = elf_getscn(elf, i);
+        Elf64_Shdr* shdr = elf64_getshdr(scn);
+        confirm( shdr, "Error getting section headers from ELF");
+
+        DEBUGLOG("Section '%s' of type %08lx with flags %08lx at %p-%p of size %lx",
+                 elf_strptr(elf, ehdr->e_shstrndx, shdr->sh_name),
+                 (long)shdr->sh_type,
+                 (long)shdr->sh_flags,
+                 (void*)(elf_bias+shdr->sh_addr),
+                 (void*)(elf_bias+shdr->sh_addr + shdr->sh_size),
+                 (long)shdr->sh_size);
+
+        // I want .bss and .data, but none of the PLT stuff. I can't get that
+        // from the flags, so I just look at the names (all look readable,
+        // writeable)
+
+        if( 0 != strcmp(".bss",  elf_strptr(elf, ehdr->e_shstrndx, shdr->sh_name)) &&
+            0 != strcmp(".data", elf_strptr(elf, ehdr->e_shstrndx, shdr->sh_name)) )
+            continue;
+
+        confirm( *Nwriteable_memory < Nwriteable_memory_max,
+                 "Too many writeable memory segments to fit into my buffer");
+
+        writeable_memory[(*Nwriteable_memory)++] =
+            (struct memrange_t){ .start = (void*)(elf_bias + shdr->sh_addr),
+                                 .end   = (void*)(elf_bias + shdr->sh_addr + shdr->sh_size) };
+        DEBUGLOG("See writeable memory at %p-%p of size %#lx",
+                 (void*)(elf_bias + shdr->sh_addr),
+                 (void*)(elf_bias + shdr->sh_addr + shdr->sh_size),
+                 shdr->sh_size);
+    }
+
+#endif
+
+
     result = true;
 
  done:
