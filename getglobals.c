@@ -34,7 +34,7 @@
 #ifdef DEBUG
  #define DEBUGLOG(fmt, ...) fprintf(stderr, fmt "\n", __VA_ARGS__)
 #else
-  #define DEBUGLOG(fmt, ...)
+ #define DEBUGLOG(fmt, ...) do { } while(0)
 #endif
 
 
@@ -206,7 +206,7 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern, 
 
 
         if( !is_addr_writeable(addr, Nwriteable_memory, writeable_memory) )
-            printf("readonly %s at %p, size %d\n", var_name, addr + bias, size);
+            DEBUGLOG("readonly %s at %p, size %d", var_name, addr + bias, size);
         else
             printf("%s at %p, size %d\n", var_name, addr + bias, size);
     }
@@ -250,13 +250,14 @@ static bool get_writeable_memory_ranges(Dwfl_Module* dwfl_module,
                  "Too many writeable memory segments to fit into my buffer");
 
         writeable_memory[(*Nwriteable_memory)++] =
-            (struct memrange_t){ .start = (void*)phdr[i].p_vaddr,
+            (struct memrange_t){ .start = (void*)(phdr[i].p_vaddr),
                                  .end   = (void*)(phdr[i].p_vaddr + phdr[i].p_memsz) };
 
-        DEBUGLOG("See writeable memory at %#lx of size %#lx",
-                 phdr[i].p_vaddr,
-                 phdr[i].p_memsz);
-
+        DEBUGLOG("See writeable memory at %p-%p of size %#lx (in-file size %#lx)",
+                 (void*)(phdr[i].p_vaddr),
+                 (void*)(phdr[i].p_vaddr + phdr[i].p_memsz),
+                 phdr[i].p_memsz,
+                 phdr[i].p_filesz);
     }
     result = true;
 
@@ -285,6 +286,12 @@ bool get_addrs(void (*func)(void),
     DEBUGLOG("dwfl_linux_proc_report says: %d", report_result );
 
     dwfl_module = dwfl_addrmodule(dwfl, (Dwarf_Addr)func);
+    if(dwfl_module == NULL)
+    {
+        DEBUGLOG("Couldn't find dwfl module containing function %p", (void*)func);
+        return false;
+    }
+
     if(!get_writeable_memory_ranges(dwfl_module,
                                     &Nwriteable_memory, writeable_memory,
                                     sizeof(writeable_memory)/sizeof(writeable_memory[0])))
@@ -305,7 +312,9 @@ bool get_addrs(void (*func)(void),
         else
             // Really expecting a DW_TAG_compile_unit. I guess I skip this.
             // Maybe this is an error
-        {}
+        {
+            DEBUGLOG("Expected compile_unit, but got %d...", (int)dwarf_tag(die));
+        }
 
     result = true;
 
