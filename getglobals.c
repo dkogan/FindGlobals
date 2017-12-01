@@ -205,7 +205,7 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern, 
             continue;
 
 
-        if( !is_addr_writeable(addr, Nwriteable_memory, writeable_memory) )
+        if( !is_addr_writeable(addr + bias, Nwriteable_memory, writeable_memory) )
             DEBUGLOG("readonly %s at %p, size %d", var_name, addr + bias, size);
         else
             printf("%s at %p, size %d\n", var_name, addr + bias, size);
@@ -250,12 +250,12 @@ static bool get_writeable_memory_ranges(Dwfl_Module* dwfl_module,
                  "Too many writeable memory segments to fit into my buffer");
 
         writeable_memory[(*Nwriteable_memory)++] =
-            (struct memrange_t){ .start = (void*)(phdr[i].p_vaddr),
-                                 .end   = (void*)(phdr[i].p_vaddr + phdr[i].p_memsz) };
+            (struct memrange_t){ .start = (void*)(elf_bias + phdr[i].p_vaddr),
+                                 .end   = (void*)(elf_bias + phdr[i].p_vaddr + phdr[i].p_memsz) };
 
         DEBUGLOG("See writeable memory at %p-%p of size %#lx (in-file size %#lx)",
-                 (void*)(phdr[i].p_vaddr),
-                 (void*)(phdr[i].p_vaddr + phdr[i].p_memsz),
+                 (void*)(elf_bias + phdr[i].p_vaddr),
+                 (void*)(elf_bias + phdr[i].p_vaddr + phdr[i].p_memsz),
                  phdr[i].p_memsz,
                  phdr[i].p_filesz);
     }
