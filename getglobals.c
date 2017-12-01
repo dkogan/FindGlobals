@@ -127,8 +127,8 @@ static bool is_addr_writeable( const void* addr,
                                const struct memrange_t* writeable_memory )
 {
     for(int i=0; i<Nwriteable_memory; i++)
-        if( addr >= writeable_memory->start &&
-            addr <  writeable_memory->end )
+        if( addr >= writeable_memory[i].start &&
+            addr <  writeable_memory[i].end )
             return true;
 
     return false;
