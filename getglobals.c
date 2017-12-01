@@ -240,8 +240,10 @@ static bool get_writeable_memory_ranges(Dwfl_Module* dwfl_module,
     *Nwriteable_memory = 0;
     for( size_t i=0; i<num_phdr; i++ )
     {
-        // I'm only looking for writeable segments
-        if( ! (phdr[i].p_flags & PF_W) )
+        // I'm only looking for readable,writeable segments that have data
+        if( ! (phdr[i].p_type == PT_LOAD &&
+               phdr[i].p_flags & PF_W    &&
+               phdr[i].p_flags & PF_R) )
             continue;
 
         if( phdr[i].p_memsz <= 0 )
