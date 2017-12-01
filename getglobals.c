@@ -164,7 +164,8 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern, 
                  dwarf_diename(&die));
 #endif
 
-        if( dwarf_tag(&die) == DW_TAG_subprogram )
+        int tag = dwarf_tag(&die);
+        if( tag == DW_TAG_subprogram || tag == DW_TAG_module )
         {
             // looking at a function. recurse down to find static variables
             if(!process_die_children(&die, NULL, bias))
@@ -172,7 +173,7 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern, 
             continue;
         }
 
-        if( dwarf_tag(&die) != DW_TAG_variable )
+        if( tag != DW_TAG_variable )
             continue;
 
         const char* decl_file = dwarf_decl_file(&die);
