@@ -15,7 +15,6 @@ int main(int argc, char* argv[])
 
     printf("=================== DWARF sees: ===================\n");
 
-    get_addrs((void (*)())&print_tst1, "tst");
-
+    get_addrs_from_this_process_from_DSO_with_function((void (*)())&print_tst1, "tst");
     return 0;
 }

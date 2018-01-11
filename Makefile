@@ -14,7 +14,7 @@ CXXFLAGS += -std=gnu++11
 $(OBJECT_GETGLOBALS) $(OBJECTS_TST): CPPFLAGS += -fPIC
 
 
-all: getglobals getglobals_viaso
+all: getglobals getglobals_viaso show_globals_from_elf_file
 
 getglobals.so: $(OBJECT_GETGLOBALS)
 	gcc -shared -o $@ $^ -ldw -lelf
@@ -27,6 +27,9 @@ getglobals: $(OBJECTS_TST) $(OBJECT_GETGLOBALS) $(OBJECT_MAIN)
 
 getglobals_viaso: $(OBJECT_MAIN) getglobals.so tst.so
 	$(CC) -Wl,-rpath=$(abspath .) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+show_globals_from_elf_file: show_globals_from_elf_file.o $(OBJECT_GETGLOBALS)
+	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 
 clean:

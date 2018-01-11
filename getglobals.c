@@ -32,7 +32,7 @@
 #define DEBUG
 
 #ifdef DEBUG
- #define DEBUGLOG(fmt, ...) fprintf(stderr, fmt "\n", __VA_ARGS__)
+ #define DEBUGLOG(fmt, ...) fprintf(stderr, fmt "\n", ## __VA_ARGS__)
 #else
  #define DEBUGLOG(fmt, ...) do { } while(0)
 #endif
@@ -323,40 +323,13 @@ static bool get_writeable_memory_ranges(Dwfl_Module* dwfl_module,
     return result;
 }
 
-bool get_addrs(void (*func)(void),
-               const char* source_pattern)
+static bool process( Dwfl_Module* dwfl_module,
+                     const char* source_pattern)
 {
-    Dwfl*        dwfl        = NULL;
-    Dwfl_Module* dwfl_module = NULL;
-
-    bool result = false;
-
-    const Dwfl_Callbacks proc_callbacks =
-        {
-            .find_elf       = dwfl_linux_proc_find_elf,
-            .find_debuginfo = dwfl_standard_find_debuginfo
-        };
-    confirm(NULL != (dwfl =
-                     dwfl_begin(&proc_callbacks)),
-            "Error calling dwfl_begin()");
-
-    int report_result = dwfl_linux_proc_report (dwfl, getpid());
-    DEBUGLOG("dwfl_linux_proc_report says: %d", report_result );
-
-    dwfl_module = dwfl_addrmodule(dwfl, (Dwarf_Addr)func);
-    if(dwfl_module == NULL)
-    {
-        DEBUGLOG("Couldn't find dwfl module containing function %p", (void*)func);
-        return false;
-    }
-
     if(!get_writeable_memory_ranges(dwfl_module,
                                     &Nwriteable_memory, writeable_memory,
                                     sizeof(writeable_memory)/sizeof(writeable_memory[0])))
-        goto done;
-
-
-
+        return false;
 
     Dwarf_Addr bias;
     Dwarf_Die* die = NULL;
@@ -365,7 +338,7 @@ bool get_addrs(void (*func)(void),
         {
             DEBUGLOG("CU bias: %#lx", bias);
             if(!process_die_children(die, source_pattern, bias))
-                goto done;
+                return false;
         }
         else
             // Really expecting a DW_TAG_compile_unit. I guess I skip this.
@@ -374,7 +347,66 @@ bool get_addrs(void (*func)(void),
             DEBUGLOG("Expected compile_unit, but got %d...", (int)dwarf_tag(die));
         }
 
-    result = true;
+    return true;
+}
+
+bool get_addrs_from_this_process_from_DSO_with_function(void (*func)(void),
+                                                        const char* source_pattern)
+{
+    bool result = false;
+
+    const Dwfl_Callbacks proc_callbacks =
+        {
+            .find_elf       = dwfl_linux_proc_find_elf,
+            .find_debuginfo = dwfl_standard_find_debuginfo
+        };
+    Dwfl* dwfl = NULL;
+    confirm(NULL != (dwfl =
+                     dwfl_begin(&proc_callbacks)),
+            "Error calling dwfl_begin()");
+
+    int report_result = dwfl_linux_proc_report (dwfl, getpid());
+    DEBUGLOG("dwfl_linux_proc_report says: %d", report_result );
+
+    Dwfl_Module* dwfl_module = dwfl_addrmodule(dwfl, (Dwarf_Addr)func);
+    if(dwfl_module == NULL)
+    {
+        DEBUGLOG("Couldn't find dwfl module containing function %p", (void*)func);
+        return false;
+    }
+
+    result = process(dwfl_module, source_pattern);
+
+ done:
+    if(dwfl != NULL)
+        dwfl_end(dwfl);
+    return result;
+}
+
+bool get_addrs_from_ELF(const char* file,
+                        const char* source_pattern)
+{
+    bool result = false;
+
+    const Dwfl_Callbacks proc_callbacks =
+        {
+         .find_elf        = dwfl_build_id_find_elf,
+         .find_debuginfo  = dwfl_standard_find_debuginfo,
+         .section_address = dwfl_offline_section_address
+        };
+    Dwfl* dwfl = NULL;
+    confirm(NULL != (dwfl =
+                     dwfl_begin(&proc_callbacks)),
+            "Error calling dwfl_begin()");
+
+    Dwfl_Module* dwfl_module = dwfl_report_offline (dwfl, "", file, -1);
+    if(dwfl_module == NULL)
+    {
+        DEBUGLOG("Couldn't open dwfl module");
+        return false;
+    }
+
+    result = process(dwfl_module, source_pattern);
 
  done:
     if(dwfl != NULL)
