@@ -206,7 +206,7 @@ static bool process_die_children(Dwarf_Die *parent, const char* source_pattern, 
 
 
         if( !is_addr_writeable(addr + bias, Nwriteable_memory, writeable_memory) )
-            DEBUGLOG("readonly %s at %p, size %d", var_name, addr + bias, size);
+            printf("readonly %s at %p, size %d\n", var_name, addr + bias, size);
         else
             printf("%s at %p, size %d\n", var_name, addr + bias, size);
     }
