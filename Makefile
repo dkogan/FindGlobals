@@ -1,5 +1,4 @@
 OBJECTS_TST       := $(addsuffix .o,$(basename $(wildcard tst*.c)))
-OBJECT_MAIN       := main.o
 OBJECT_GETGLOBALS := getglobals.o
 
 LDLIBS += -ldw -lelf
@@ -14,7 +13,12 @@ CXXFLAGS += -std=gnu++11
 $(OBJECT_GETGLOBALS) $(OBJECTS_TST): CPPFLAGS += -fPIC
 
 
-all: getglobals getglobals_viaso show_globals_from_elf_file
+EXECUTABLES :=					\
+  show_globals_from_this_process		\
+  show_globals_from_this_process_viaso		\
+  show_globals_from_elf_file
+
+all: $(EXECUTABLES)
 
 getglobals.so: $(OBJECT_GETGLOBALS)
 	gcc -shared -o $@ $^ -ldw -lelf
@@ -22,10 +26,10 @@ getglobals.so: $(OBJECT_GETGLOBALS)
 tst.so: $(OBJECTS_TST)
 	gcc -shared -o $@ $^
 
-getglobals: $(OBJECTS_TST) $(OBJECT_GETGLOBALS) $(OBJECT_MAIN)
+show_globals_from_this_process: $(OBJECTS_TST) $(OBJECT_GETGLOBALS) show_globals_from_this_process.o
 	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-getglobals_viaso: $(OBJECT_MAIN) getglobals.so tst.so
+show_globals_from_this_process_viaso: show_globals_from_this_process.o getglobals.so tst.so
 	$(CC) -Wl,-rpath=$(abspath .) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 show_globals_from_elf_file: show_globals_from_elf_file.o $(OBJECT_GETGLOBALS)
@@ -33,7 +37,7 @@ show_globals_from_elf_file: show_globals_from_elf_file.o $(OBJECT_GETGLOBALS)
 
 
 clean:
-	rm -rf getglobals *.o *.d *.so
+	rm -rf $(EXECUTABLES) *.o *.d *.so
 .PHONY: clean
 
 -include *.d
