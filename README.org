@@ -8,7 +8,7 @@ The global state I'm looking for is all persistent data:
 - static local variables in functions
 
 I'm only interested in data that can change, so I look /only/ at the writeable
-segment. This program is alpha-quality, but passes some basic tests.
+segment. This program is beta-quality, but works for me, and is very useful.
 
 * Example
 =tst1.c=:
@@ -67,7 +67,7 @@ void print_tst2(void)
 }
 #+END_SRC
 
-=main.c=:
+=show_globals_from_this_process.c=:
 #+BEGIN_SRC C
 // ...
 #include "getglobals.h"
@@ -81,8 +81,7 @@ int main(int argc, char* argv[])
 
     printf("=================== DWARF sees: ===================\n");
 
-    get_addrs((void (*)())&print_tst1, "tst");
-
+    get_addrs_from_this_process_from_DSO_with_function((void (*)())&print_tst1, "tst");
     return 0;
 }
 #+END_SRC
@@ -90,7 +89,7 @@ int main(int argc, char* argv[])
 Results:
 
 #+BEGIN_EXAMPLE
-$ ./getglobals 2>/dev/null
+$ ./show_globals_from_this_process 2>/dev/null
 
 =================== Program sees: ===================
 v1 at 0x55756bc8e240, size 80
@@ -125,7 +124,7 @@ const_volatile_char at 0x55756bc8e290, size 1
 readonly const_char at 0x55756ba8cc65, size 1
 
 
-dima@shorty:$ ./getglobals 2>/dev/null | sort | uniq -c | sort
+dima@shorty:$ ./show_globals_from_this_process 2>/dev/null | sort | uniq -c | sort
 
       1 =================== DWARF sees: ===================
       1 =================== Program sees: ===================
@@ -147,24 +146,66 @@ dima@shorty:$ ./getglobals 2>/dev/null | sort | uniq -c | sort
 #+END_EXAMPLE
 
 In the example above we see the test program report the locations and addreses
-of its data. Then the instrumentation reports the addresses and data that it
-sees. These should be identical (in theory). We then sort and count duplicate
-lines in the output. If the two sets of reports were identical, we should see
-all lines appear 2 times. We see this with 2 trivial exceptions:
+of the data in the test DSO. Then the instrumentation reports the addresses and
+data that it sees. These should be identical: the instrumentation should figure
+out the correct addresses. We then sort and count duplicate lines in the output.
+If the two sets of reports were identical, we should see all lines appear 2
+times. We see this with 2 trivial exceptions:
 
 - The lines containing ======= are delimiters
 - =x0= has size 0, so the instrumentation doesn't even bother to report it
 
+It is also possible to query non-loaded ELF files by running a different
+utility, and passing the query DSO on the commandline:
+
+#+BEGIN_EXAMPLE
+dima@shorty:$ ./show_globals_from_elf_file tst.so 2>/dev/null
+
+v2 at 0x212028, size 4
+const_char_pointer at 0x212050, size 8
+readonly const_char_pointer_const at 0x10cc8, size 8
+readonly char_pointer_const at 0x10cc0, size 8
+readonly const_string_array at 0x10cbc, size 4
+readonly static_const_string_array at 0x10cb8, size 4
+s0 at 0x212080, size 100
+x1 at 0x212100, size 120
+static_int_5 at 0x212060, size 20
+static_double at 0x212058, size 8
+v1 at 0x2121a0, size 80
+volatile_const_char at 0x212180, size 1
+const_volatile_char at 0x2121f0, size 1
+readonly const_char at 0x10d60, size 1
+#+END_EXAMPLE
+
+This is the same data, but since this DSO wasn't loaded, the addresses all have
+offsets.
+
+Finally, the variable ranges can be visualized with something like this:
+
+#+BEGIN_EXAMPLE
+dima@shorty:$ ./show_globals_from_elf_file tst.so 2>/dev/null | \
+               awk -n '!/readonly/ && /, size/ \
+                 { addr = and($3,0xFFFFFFFF); \
+                   print addr,"range", 0,addr, addr+$5; \
+                   print addr,"labels",1,$1 }' | \
+               feedgnuplot --domain --dataid --rangesize range 3 --rangesize labels 2 \
+                           --style range 'with xerrorbars' \
+                           --style labels 'with labels' \
+                           --ymin -2 --ymax 3 \
+                           --set 'xtics format "0x%08x"'
+#+END_EXAMPLE
+
 * Notes
-- The example in this tree works with both static linking (=getglobals=) and
-  dynamic linking (=getglobals_viaso=).
+- The example in this tree works with both static linking
+  (=show_globals_from_this_process=) and dynamic linking
+  (=show_globals_from_this_process_viaso=).
 
-- This is alpha quality proof-of-concept software. It's an excellent starting
-  point if you need this functionality, but do thoroughly test it for your use
-  case.
+- This is proof-of-concept software. It's an excellent starting point if you
+  need this functionality, but do thoroughly test it for your use case.
 
-- This was written with C code in mind. I can imagine that C++ can produce
-  persistent state in more ways. Again, test it thoroughly
+- This was written with C code in mind, and tested to work with Fortran as well.
+  I can imagine that C++ can produce persistent state in more ways. Again, test
+  it thoroughly
 
 - The libraries I'm using to parse the DWARF are woefully underdocumented, and
   I'm probably not doing everything 100% correctly. At the risk of repeating
@@ -175,9 +216,12 @@ all lines appear 2 times. We see this with 2 trivial exceptions:
   libraries ourselves with =libdl=, then it /probably/ works too, but I'd test
   it before assuming.
 
-This effort uncovered a bug in gcc:
+This effort uncovered a bug in gcc, and one in elfutils.
+
+** gcc bug
 
 https://gcc.gnu.org/bugzilla/show_bug.cgi?id=78100
+
 
 It turns out that gcc erroneously omits the sizing information if you have an
 array object pre-declared as an =extern= of unknown size (as was done in my
@@ -197,6 +241,13 @@ int main(void)
 #+END_SRC
 
 then the object produced by gcc <= 6.2 doesn't know that =s= has /3/ integers.
+
+** elfutils bug
+
+Apparently elfutils was misreporting the sizes of multi-dimensional arrays.
+Reported and fixed here:
+
+https://sourceware.org/bugzilla/show_bug.cgi?id=22546
 
 * Copyright and License
 Copyright 2016 Dima Kogan.
