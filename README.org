@@ -250,7 +250,8 @@ Reported and fixed here:
 https://sourceware.org/bugzilla/show_bug.cgi?id=22546
 
 * Copyright and License
-Copyright 2016 Dima Kogan.
+Copyright 2016      Dima Kogan
+          2017-2018 California Institute of Technology
 
 Released under an MIT-style license:
 
